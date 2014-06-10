@@ -1,0 +1,222 @@
+.TH HROLLER 1 "" "Ganeti" "Version @GANETI_VERSION@"
+.SH NAME
+.PP
+hroller - Cluster rolling maintenance scheduler for Ganeti
+.SH SYNOPSIS
+.PP
+\f[B]hroller\f[] {backend options...} [algorithm options...] [reporting
+options...]
+.PP
+\f[B]hroller\f[] --version
+.PP
+Backend options:
+.PP
+{ \f[B]-m\f[] \f[I]cluster\f[] | \f[B]-L[\f[] \f[I]path\f[] \f[B]]\f[] |
+\f[B]-t\f[] \f[I]data-file\f[] | \f[B]-I\f[] \f[I]path\f[] }
+.PP
+\f[B][ --force ]\f[]
+.PP
+Algorithm options:
+.PP
+\f[B][ -G \f[I]name\f[] ]\f[] \f[B][ -O \f[I]name...\f[] ]\f[] \f[B][
+--node-tags\f[] \f[I]tag,..\f[] \f[B]]\f[] \f[B][ --skip-non-redundant
+]\f[]
+.PP
+\f[B][ --offline-maintenance ]\f[] \f[B][ --ignore-non-redundant ]\f[]
+.PP
+Reporting options:
+.PP
+\f[B][ -v... | -q ]\f[] \f[B][ -S \f[I]file\f[] ]\f[] \f[B][
+--one-step-only ]\f[] \f[B][ --print-moves ]\f[]
+.SH DESCRIPTION
+.PP
+hroller is a cluster maintenance reboot scheduler.
+It can calculate which set of nodes can be rebooted at the same time
+while avoiding having both primary and secondary nodes being rebooted at
+the same time.
+.PP
+For backends that support identifying the master node (currently RAPI
+and LUXI), the master node is scheduled as the last node in the last
+reboot group.
+Apart from this restriction, larger reboot groups are put first.
+.SS ALGORITHM FOR CALCULATING OFFLINE REBOOT GROUPS
+.PP
+hroller will view the nodes as vertices of an undirected graph, with two
+kind of edges.
+Firstly, there are edges from the primary to the secondary node of every
+instance.
+Secondly, two nodes are connected by an edge if they are the primary
+nodes of two instances that have the same secondary node.
+It will then color the graph using a few different heuristics, and
+return the minimum-size color set found.
+Node with the same color can then simultaneously migrate all instance
+off to their respective secondary nodes, and it is safe to reboot them
+simultaneously.
+.SH OPTIONS
+.PP
+For a description of the standard options check \f[B]htools\f[](1) and
+\f[B]hbal\f[](1).
+.TP
+.B --force
+Do not fail, even if the master node cannot be determined.
+.RS
+.RE
+.TP
+.B --node-tags \f[I]tag,...\f[]
+Restrict to nodes having at least one of the given tags.
+.RS
+.RE
+.TP
+.B --full-evacuation
+Also plan moving secondaries out of the nodes to be rebooted.
+For each instance the move is at most a migrate (if it was primary on
+that node) followed by a replace secondary.
+.RS
+.RE
+.TP
+.B --skip-non-redundant
+Restrict to nodes not hosting any non-redundant instance.
+.RS
+.RE
+.TP
+.B --offline-maintenance
+Pretend that all instances are shutdown before the reboots are carried
+out.
+I.e., only edges from the primary to the secondary node of an instance
+are considered.
+.RS
+.RE
+.TP
+.B --ignore-non-redundnant
+Pretend that the non-redundant instances do not exist, and only take
+instances with primary and secondary node into account.
+.RS
+.RE
+.TP
+.B --one-step-only
+Restrict to the first reboot group.
+Output the group one node per line.
+.RS
+.RE
+.TP
+.B --print-moves
+After each group list for each affected instance a node where it can be
+evacuated to.
+The moves are computed under the assumption that after each reboot
+group, all instances are moved back to their initial position.
+.RS
+.RE
+.SH BUGS
+.PP
+If instances are online the tool should refuse to do offline rolling
+maintenances, unless explicitly requested.
+.PP
+End-to-end shelltests should be provided.
+.SH EXAMPLES
+.SS Online Rolling reboots, using tags
+.PP
+Selecting by tags and getting output for one step only can be used for
+planing the next maintenance step.
+.IP
+.nf
+\f[C]
+$\ hroller\ --node-tags\ needsreboot\ --one-step-only\ -L
+\[aq]First\ Reboot\ Group\[aq]
+\ node1.example.com
+\ node3.example.com
+\f[]
+.fi
+.PP
+Typically these nodes would be drained and migrated.
+.IP
+.nf
+\f[C]
+$\ GROUP=`hroller\ --node-tags\ needsreboot\ --one-step-only\ --no-headers\ -L`
+$\ for\ node\ in\ $GROUP;\ do\ gnt-node\ modify\ -D\ yes\ $node;\ done
+$\ for\ node\ in\ $GROUP;\ do\ gnt-node\ migrate\ -f\ --submit\ $node;\ done
+\f[]
+.fi
+.PP
+After maintenance, the tags would be removed and the nodes undrained.
+.SS Offline Rolling node reboot output
+.PP
+If all instances are shut down, usually larger node groups can be found.
+.IP
+.nf
+\f[C]
+$\ hroller\ --offline-maintainance\ -L
+\[aq]Node\ Reboot\ Groups\[aq]
+node1.example.com,node3.example.com,node5.example.com
+node8.example.com,node6.example.com,node2.example.com
+node7.example.com,node4.example.com
+\f[]
+.fi
+.SS Rolling reboots with non-redundant instances
+.PP
+By default, hroller plans capacity to move the non-redundant instances
+out of the nodes to be rebooted.
+If requested, apropriate locations for the non-redundant instances can
+be shown.
+The assumption is that instances are moved back to their original node
+after each reboot; these back moves are not part of the output.
+.IP
+.nf
+\f[C]
+$\ hroller\ --print-moves\ -L
+\[aq]Node\ Reboot\ Groups\[aq]
+node-01-002,node-01-003
+\ \ inst-20\ node-01-001
+\ \ inst-21\ node-01-000
+\ \ inst-30\ node-01-005
+\ \ inst-31\ node-01-004
+node-01-004,node-01-005
+\ \ inst-40\ node-01-001
+\ \ inst-41\ node-01-000
+\ \ inst-50\ node-01-003
+\ \ inst-51\ node-01-002
+node-01-001,node-01-000
+\ \ inst-00\ node-01-002
+\ \ inst-01\ node-01-003
+\ \ inst-10\ node-01-005
+\ \ inst-11\ node-01-004
+\f[]
+.fi
+.SH REPORTING BUGS
+.PP
+Report bugs to project website (http://code.google.com/p/ganeti/) or
+contact the developers using the Ganeti mailing
+list (ganeti@googlegroups.com).
+.SH SEE ALSO
+.PP
+Ganeti overview and specifications: \f[B]ganeti\f[](7) (general
+overview), \f[B]ganeti-os-interface\f[](7) (guest OS definitions),
+\f[B]ganeti-extstorage-interface\f[](7) (external storage providers).
+.PP
+Ganeti commands: \f[B]gnt-cluster\f[](8) (cluster-wide commands),
+\f[B]gnt-job\f[](8) (job-related commands), \f[B]gnt-node\f[](8)
+(node-related commands), \f[B]gnt-instance\f[](8) (instance commands),
+\f[B]gnt-os\f[](8) (guest OS commands), \f[B]gnt-storage\f[](8) (storage
+commands), \f[B]gnt-group\f[](8) (node group commands),
+\f[B]gnt-backup\f[](8) (instance import/export commands),
+\f[B]gnt-debug\f[](8) (debug commands).
+.PP
+Ganeti daemons: \f[B]ganeti-watcher\f[](8) (automatic instance
+restarter), \f[B]ganeti-cleaner\f[](8) (job queue cleaner),
+\f[B]ganeti-noded\f[](8) (node daemon), \f[B]ganeti-masterd\f[](8)
+(master daemon), \f[B]ganeti-rapi\f[](8) (remote API daemon).
+.PP
+Ganeti htools: \f[B]htools\f[](1) (generic binary), \f[B]hbal\f[](1)
+(cluster balancer), \f[B]hspace\f[](1) (capacity calculation),
+\f[B]hail\f[](1) (IAllocator plugin), \f[B]hscan\f[](1) (data gatherer
+from remote clusters), \f[B]hinfo\f[](1) (cluster information printer),
+\f[B]mon-collector\f[](7) (data collectors interface).
+.SH COPYRIGHT
+.PP
+Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011, 2012 Google Inc.
+Permission is granted to copy, distribute and/or modify under the terms
+of the GNU General Public License as published by the Free Software
+Foundation; either version 2 of the License, or (at your option) any
+later version.
+.PP
+On Debian systems, the complete text of the GNU General Public License
+can be found in /usr/share/common-licenses/GPL.

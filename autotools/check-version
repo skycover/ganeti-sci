@@ -1,0 +1,58 @@
+#!/bin/bash
+#
+
+# Copyright (C) 2010,2013 Google Inc.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA.
+
+set -e
+
+# Enable Bash-specific patterns
+shopt -s extglob
+
+readonly version=$1
+readonly newsfile=$2
+readonly numpat='+([0-9])'
+
+case "$version" in
+  # Format "x.y.z"
+  $numpat.$numpat.$numpat) : ;;
+
+  # Format "x.y.z~rcN" or "x.y.z~betaN" or "x.y.z~alphaN" for N > 0
+  $numpat.$numpat.$numpat~@(rc|beta|alpha)[1-9]*([0-9])) : ;;
+
+  *)
+    echo "Invalid version format: $version" >&2
+    exit 1
+  ;;
+esac
+
+readonly newsver="Version ${version/\~/ }"
+
+# Only alpha versions are allowed not to have their own NEWS section yet
+set +e
+FOUND=x`echo $version | grep "alpha[1-9]*[0-9]$"`
+set -e
+if [ $FOUND == "x" ]
+then
+  if ! grep -q -x "$newsver" $newsfile
+  then
+    echo "Unable to find heading '$newsver' in NEWS" >&2
+    exit 1
+  fi
+fi
+
+exit 0

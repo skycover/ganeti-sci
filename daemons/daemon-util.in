@@ -1,0 +1,396 @@
+#!/bin/bash
+#
+
+# Copyright (C) 2009, 2011, 2012 Google Inc.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA.
+
+set -e
+
+@SHELL_ENV_INIT@
+
+readonly defaults_file="$SYSCONFDIR/default/ganeti"
+
+# This is a list of all daemons and the order in which they're started. The
+# order is important as there are dependencies between them. On shutdown,
+# they're stopped in reverse order.
+DAEMONS=(
+  ganeti-noded
+  ganeti-masterd
+  ganeti-rapi
+  )
+
+_confd_enabled() {
+  [[ "@CUSTOM_ENABLE_CONFD@" == True ]]
+}
+
+if _confd_enabled; then
+  DAEMONS+=( ganeti-confd )
+  DAEMONS+=( ganeti-luxid )
+fi
+
+_mond_enabled() {
+  [[ "@CUSTOM_ENABLE_MOND@" == True ]]
+}
+
+if _mond_enabled; then
+  DAEMONS+=( ganeti-mond )
+fi
+
+NODED_ARGS=
+MASTERD_ARGS=
+CONFD_ARGS=
+LUXID_ARGS=
+RAPI_ARGS=
+MOND_ARGS=
+
+# Read defaults file if it exists
+if [[ -s $defaults_file ]]; then
+  . $defaults_file
+fi
+
+# Meant to facilitate use utilities in /etc/rc.d/init.d/functions in case
+# start-stop-daemon is not available.
+_ignore_error() {
+  eval "$@" || :
+}
+
+_daemon_pidfile() {
+  echo "$RUN_DIR/$1.pid"
+}
+
+_daemon_executable() {
+  echo "@PREFIX@/sbin/$1"
+}
+
+_daemon_usergroup() {
+  case "$1" in
+    masterd)
+      echo "@GNTMASTERUSER@:@GNTMASTERDGROUP@"
+      ;;
+    confd)
+      echo "@GNTCONFDUSER@:@GNTCONFDGROUP@"
+      ;;
+    luxid)
+      echo "@GNTLUXIDUSER@:@GNTLUXIDGROUP@"
+      ;;
+    rapi)
+      echo "@GNTRAPIUSER@:@GNTRAPIGROUP@"
+      ;;
+    noded)
+      echo "@GNTNODEDUSER@:@GNTNODEDGROUP@"
+      ;;
+    mond)
+      echo "@GNTMONDUSER@:@GNTMONDGROUP@"
+      ;;
+    *)
+      echo "root:@GNTDAEMONSGROUP@"
+      ;;
+  esac
+}
+
+# Checks whether the local machine is part of a cluster
+check_config() {
+  local server_pem=$DATA_DIR/server.pem
+  local fname
+
+  for fname in $server_pem; do
+    if [[ ! -f $fname ]]; then
+      echo "Missing configuration file $fname" >&2
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+# Checks the exit code of a daemon
+check_exitcode() {
+  if [[ "$#" -lt 1 ]]; then
+    echo 'Missing exit code.' >&2
+    return 1
+  fi
+
+  local rc="$1"; shift
+
+  case "$rc" in
+    0) ;;
+    11)
+      echo "not master"
+    ;;
+    *)
+      echo "exit code $rc"
+      return 1
+    ;;
+  esac
+
+  return 0
+}
+
+# Prints path to PID file for a daemon.
+daemon_pidfile() {
+  if [[ "$#" -lt 1 ]]; then
+    echo 'Missing daemon name.' >&2
+    return 1
+  fi
+
+  local name="$1"; shift
+
+  _daemon_pidfile $name
+}
+
+# Prints path to daemon executable.
+daemon_executable() {
+  if [[ "$#" -lt 1 ]]; then
+    echo 'Missing daemon name.' >&2
+    return 1
+  fi
+
+  local name="$1"; shift
+
+  _daemon_executable $name
+}
+
+# Prints a list of all daemons in the order in which they should be started
+list_start_daemons() {
+  local name
+
+  for name in "${DAEMONS[@]}"; do
+    echo "$name"
+  done
+}
+
+# Prints a list of all daemons in the order in which they should be stopped
+list_stop_daemons() {
+  list_start_daemons | tac
+}
+
+# Checks whether a daemon name is known
+is_daemon_name() {
+  if [[ "$#" -lt 1 ]]; then
+    echo 'Missing daemon name.' >&2
+    return 1
+  fi
+
+  local name="$1"; shift
+
+  for i in "${DAEMONS[@]}"; do
+    if [[ "$i" == "$name" ]]; then
+      return 0
+    fi
+  done
+
+  echo "Unknown daemon name '$name'" >&2
+  return 1
+}
+
+# Checks whether daemon is running
+check() {
+  if [[ "$#" -lt 1 ]]; then
+    echo 'Missing daemon name.' >&2
+    return 1
+  fi
+
+  local name="$1"; shift
+  local pidfile=$(_daemon_pidfile $name)
+  local daemonexec=$(_daemon_executable $name)
+
+  if type -p start-stop-daemon >/dev/null; then
+    start-stop-daemon --stop --signal 0 --quiet \
+      --pidfile $pidfile
+  else
+    _ignore_error status \
+      -p $pidfile \
+      $daemonexec
+  fi
+}
+
+# Starts a daemon
+start() {
+  if [[ "$#" -lt 1 ]]; then
+    echo 'Missing daemon name.' >&2
+    return 1
+  fi
+
+  local name="$1"; shift
+  # Convert daemon name to uppercase after removing "ganeti-" prefix
+  local plain_name=${name#ganeti-}
+  local ucname=$(tr a-z A-Z <<<$plain_name)
+  local pidfile=$(_daemon_pidfile $name)
+  local usergroup=$(_daemon_usergroup $plain_name)
+  local daemonexec=$(_daemon_executable $name)
+
+  if ( [[ "$name" == ganeti-confd ]] || [[ "$name" == ganeti-luxid ]] ) \
+      && ! _confd_enabled; then
+    echo 'ganeti-confd disabled at build time' >&2
+    return 1
+  fi
+
+  # Read $<daemon>_ARGS and $EXTRA_<daemon>_ARGS
+  eval local args="\"\$${ucname}_ARGS \$EXTRA_${ucname}_ARGS\""
+
+  @PKGLIBDIR@/ensure-dirs
+
+  if type -p start-stop-daemon >/dev/null; then
+    start-stop-daemon --start --quiet --oknodo \
+      --pidfile $pidfile \
+      --startas $daemonexec \
+      --chuid $usergroup \
+      -- $args "$@"
+  else
+    # TODO: Find a way to start daemon with a group, until then the group must
+    # be removed
+    _ignore_error daemon \
+      --pidfile $pidfile \
+      --user ${usergroup%:*} \
+      $daemonexec $args "$@"
+  fi
+
+}
+
+# Stops a daemon
+stop() {
+  if [[ "$#" -lt 1 ]]; then
+    echo 'Missing daemon name.' >&2
+    return 1
+  fi
+
+  local name="$1"; shift
+  local pidfile=$(_daemon_pidfile $name)
+
+  if type -p start-stop-daemon >/dev/null; then
+    start-stop-daemon --stop --quiet --oknodo --retry 30 \
+      --pidfile $pidfile
+  else
+    _ignore_error killproc -p $pidfile $name
+  fi
+}
+
+# Starts a daemon if it's not yet running
+check_and_start() {
+  local name="$1"
+
+  if ! check $name; then
+    start $name
+  fi
+}
+
+# Starts the master role
+start_master() {
+  start ganeti-masterd
+  start ganeti-rapi
+  if _confd_enabled; then
+      start ganeti-luxid
+  else
+      return 0
+  fi
+}
+
+# Stops the master role
+stop_master() {
+  if _confd_enabled ; then
+      stop ganeti-luxid
+  fi
+  stop ganeti-rapi
+  stop ganeti-masterd
+}
+
+# Start all daemons
+start_all() {
+  for i in $(list_start_daemons); do
+    local rc=0
+
+    # Try to start daemon
+    start $i || rc=$?
+
+    if ! errmsg=$(check_exitcode $rc); then
+      echo "$errmsg" >&2
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+# Stop all daemons
+stop_all() {
+  for i in $(list_stop_daemons); do
+    stop $i
+  done
+}
+
+# SIGHUP a process to force re-opening its logfiles
+rotate_logs() {
+  if [[ "$#" -lt 1 ]]; then
+    echo 'Missing daemon name.' >&2
+    return 1
+  fi
+
+  local name="$1"; shift
+  local pidfile=$(_daemon_pidfile $name)
+  local daemonexec=$(_daemon_executable $name)
+
+  if type -p start-stop-daemon >/dev/null; then
+    start-stop-daemon --stop --signal HUP --quiet \
+      --oknodo --pidfile $pidfile
+  else
+    _ignore_error killproc \
+      -p $pidfile \
+      $daemonexec -HUP
+  fi
+}
+
+# SIGHUP all processes
+rotate_all_logs() {
+  for i in $(list_stop_daemons); do
+    rotate_logs $i
+  done
+}
+
+# Reloads the SSH keys
+reload_ssh_keys() {
+  @RPL_SSH_INITD_SCRIPT@ restart
+}
+
+# Read @SYSCONFDIR@/rc.d/init.d/functions if start-stop-daemon not available
+if ! type -p start-stop-daemon >/dev/null && \
+   [[ -f @SYSCONFDIR@/rc.d/init.d/functions ]]; then
+  _ignore_error . @SYSCONFDIR@/rc.d/init.d/functions
+fi
+
+if [[ "$#" -lt 1 ]]; then
+  echo "Usage: $0 <action>" >&2
+  exit 1
+fi
+
+orig_action=$1; shift
+
+if [[ "$orig_action" == *_* ]]; then
+  echo "Command must not contain underscores" >&2
+  exit 1
+fi
+
+# Replace all dashes (-) with underlines (_)
+action=${orig_action//-/_}
+
+# Is it a known function?
+if ! declare -F "$action" >/dev/null 2>&1; then
+  echo "Unknown command: $orig_action" >&2
+  exit 1
+fi
+
+# Call handler function
+$action "$@"

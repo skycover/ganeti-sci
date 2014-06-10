@@ -1,0 +1,127 @@
+.TH HAREP 1 "" "Ganeti" "Version @GANETI_VERSION@"
+.SH NAME
+.PP
+harep - Ganeti auto-repair tool
+.SH SYNOPSIS
+.PP
+\f[B]harep\f[] [ [\f[B]-L\f[] | \f[B]--luxi\f[] ] = \f[I]socket\f[] ] [
+--job-delay = \f[I]seconds\f[] ]
+.PP
+\f[B]harep\f[] --version
+.SH DESCRIPTION
+.PP
+Harep is the Ganeti auto-repair tool.
+It is able to detect that an instance is broken and to generate a
+sequence of jobs that will fix it, in accordance to the policies set by
+the administrator.
+.PP
+Harep is able to recognize what state an instance is in (healthy,
+suspended, needs repair, repair disallowed, pending repair, repair
+disallowed, repair failed) and to lead it through a sequence of steps
+that will bring the instance back to the healthy state.
+Therefore, harep is mainly meant to be run regularly and frequently
+using a cron job, so that is can actually follow the instance along all
+the process.
+At every run, harep will update the tags it adds to instances that
+describe its repair status, and will submit jobs that actually perform
+the required repair operations.
+.PP
+By default, harep only reports on the health status of instances, but
+doesn\[aq]t perform any action, as they might be potentially dangerous.
+Therefore, harep will only touch instances that it has been explicitly
+authorized to work on.
+.PP
+The tags enabling harep, can be associated to single instances, or to a
+nodegroup or to the whole cluster, therefore affecting all the instances
+they contain.
+The possible tags share the common structure:
+.IP
+.nf
+\f[C]
+ganeti:watcher:autorepair:<type>
+\f[]
+.fi
+.PP
+where \f[C]<type>\f[] can have the following values:
+.IP \[bu] 2
+\f[C]fix-storage\f[]: allow disk replacement or fix the backend without
+affecting the instance itself (broken DRBD secondary)
+.IP \[bu] 2
+\f[C]migrate\f[]: allow instance migration
+.IP \[bu] 2
+\f[C]failover\f[]: allow instance reboot on the secondary
+.IP \[bu] 2
+\f[C]reinstall\f[]: allow disks to be recreated and the instance to be
+reinstalled
+.PP
+Each element in the list of tags, includes all the authorizations of the
+previous one, with \f[C]fix-storage\f[] being the least powerful and
+\f[C]reinstall\f[] being the most powerful.
+.PP
+In case multiple autorepair tags act on the same instance, only one can
+actually be active.
+The conflict is solved according to the following rules:
+.IP "1." 3
+if multiple tags are in the same object, the least destructive takes
+precedence.
+.IP "2." 3
+if the tags are across objects, the nearest tag wins.
+.PP
+Example: A cluster has instances I1 and I2, where I1 has the
+\f[C]failover\f[] tag, and the cluster has both \f[C]fix-storage\f[] and
+\f[C]reinstall\f[].
+The I1 instance will be allowed to \f[C]failover\f[], the I2 instance
+only to \f[C]fix-storage\f[].
+.SH OPTIONS
+.PP
+The options that can be passed to the program are as follows:
+.TP
+.B -L \f[I]socket\f[], --luxi=\f[I]socket\f[]
+collect data via Luxi, optionally using the given \f[I]socket\f[] path.
+.RS
+.RE
+.TP
+.B --job-delay=\f[I]seconds\f[]
+insert this much delay before the execution of repair jobs to allow the
+tool to continue processing instances.
+.RS
+.RE
+.SH REPORTING BUGS
+.PP
+Report bugs to project website (http://code.google.com/p/ganeti/) or
+contact the developers using the Ganeti mailing
+list (ganeti@googlegroups.com).
+.SH SEE ALSO
+.PP
+Ganeti overview and specifications: \f[B]ganeti\f[](7) (general
+overview), \f[B]ganeti-os-interface\f[](7) (guest OS definitions),
+\f[B]ganeti-extstorage-interface\f[](7) (external storage providers).
+.PP
+Ganeti commands: \f[B]gnt-cluster\f[](8) (cluster-wide commands),
+\f[B]gnt-job\f[](8) (job-related commands), \f[B]gnt-node\f[](8)
+(node-related commands), \f[B]gnt-instance\f[](8) (instance commands),
+\f[B]gnt-os\f[](8) (guest OS commands), \f[B]gnt-storage\f[](8) (storage
+commands), \f[B]gnt-group\f[](8) (node group commands),
+\f[B]gnt-backup\f[](8) (instance import/export commands),
+\f[B]gnt-debug\f[](8) (debug commands).
+.PP
+Ganeti daemons: \f[B]ganeti-watcher\f[](8) (automatic instance
+restarter), \f[B]ganeti-cleaner\f[](8) (job queue cleaner),
+\f[B]ganeti-noded\f[](8) (node daemon), \f[B]ganeti-masterd\f[](8)
+(master daemon), \f[B]ganeti-rapi\f[](8) (remote API daemon).
+.PP
+Ganeti htools: \f[B]htools\f[](1) (generic binary), \f[B]hbal\f[](1)
+(cluster balancer), \f[B]hspace\f[](1) (capacity calculation),
+\f[B]hail\f[](1) (IAllocator plugin), \f[B]hscan\f[](1) (data gatherer
+from remote clusters), \f[B]hinfo\f[](1) (cluster information printer),
+\f[B]mon-collector\f[](7) (data collectors interface).
+.SH COPYRIGHT
+.PP
+Copyright (C) 2006, 2007, 2008, 2009, 2010, 2011, 2012 Google Inc.
+Permission is granted to copy, distribute and/or modify under the terms
+of the GNU General Public License as published by the Free Software
+Foundation; either version 2 of the License, or (at your option) any
+later version.
+.PP
+On Debian systems, the complete text of the GNU General Public License
+can be found in /usr/share/common-licenses/GPL.
