@@ -1,3 +1,15 @@
+ganeti (2.10.3-1~bpo70+sci2) wheezy-backports; urgency=medium
+
+  * Add startup stages for watcher
+
+ -- Vladimir Ipatov <vs@ipatov.net>  Mon, 10 Jun 2014 03:00:45 +0300
+
+ganeti (2.10.3-1~bpo70+sci1) wheezy-backports; urgency=medium
+
+  * Add blockev prefix for Solaris 11 patch
+
+ -- Vladimir Ipatov <vs@ipatov.net>  Mon, 26 May 2014 02:13:09 +0300
+
 ganeti (2.10.3-1~bpo70+1) wheezy-backports; urgency=medium
 
   * Rebuild for wheezy-backports.

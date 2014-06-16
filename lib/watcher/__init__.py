@@ -58,7 +58,8 @@ from ganeti.watcher import nodemaint
 from ganeti.watcher import state
 
 
-MAXTRIES = 5
+MAXTRIES = 3
+STAGES_FILE = '/etc/ganeti/stages.conf'
 BAD_STATES = compat.UniqueFrozenset([
   constants.INSTST_ERRORDOWN,
   ])
@@ -171,16 +172,70 @@ class Node:
     self.offline = offline
     self.secondaries = secondaries
 
-
-def _CheckInstances(cl, notepad, instances):
-  """Make a pass over the list of instances, restarting downed ones.
+def _ReadStages():
+  """Read stage definitions from file
 
   """
+  stagelist = []
+  if os.path.isfile(STAGES_FILE):
+    stagefile = open(STAGES_FILE,'r')
+
+    for l in stagefile.readlines():
+      stageline = l.strip().split()
+      stagelist.append({'delay': stageline[0], 'instances': stageline[1].split(',')})
+
+    logging.debug("stages read from file: %s", stagelist)  
+
+  return stagelist
+
+def _CheckInstances(cl, notepad, instances):
+  """Make a pass over the list of stages, starts instances from first stage
+     with down instances and then exit
+  """
+  stagelist = _ReadStages()
+
   notepad.MaintainInstanceList(instances.keys())
 
   started = set()
+  stage_count=0
+  restart_needed=False
+  
+  for stage in stagelist:
+    stage_instances={}
+    delay = stage['delay']
+    instances_list = stage['instances']
+    logging.debug("executing stage %s, starting instances: %s", stage_count, instances_list)  
+    for inst_name in instances_list:
+      if inst_name in instances.keys():
+        stage_instances[inst_name]=instances[inst_name]
+
+    is_started,started=_CheckStageInstances(cl, notepad, stage_instances)
+
+    # restart watcher if any instance started during the stage
+    if is_started == True:
+      logging.info("Stage %s exec end, sleeping for %s seconds", stage_count, delay)
+      time.sleep(int(delay))
+      restart_needed=True
+      return (restart_needed,started)
+     
+    stage_count=stage_count+1 
+
+  # check remaining instances if all stages finished
+  logging.debug("executing default stage, starting remaining instances: %s", instances.keys())  
+  is_started,started=_CheckStageInstances(cl, notepad, instances)
+  return (restart_needed,started)
+
+
+def _CheckStageInstances(cl, notepad, instances):
+  """Make a pass over the list of instances, restarting downed ones.
+
+  """
+
+  started = set()
+  is_started = False
 
   for inst in instances.values():
+    logging.debug("instance: %s, status: %s", inst.name, inst.status)  
     if inst.status in BAD_STATES:
       n = notepad.NumberOfRestartAttempts(inst.name)
 
@@ -198,6 +253,7 @@ def _CheckInstances(cl, notepad, instances):
       try:
         logging.info("Restarting instance '%s' (attempt #%s)",
                      inst.name, n + 1)
+        is_started = True
         inst.Restart(cl)
       except Exception: # pylint: disable=W0703
         logging.exception("Error while restarting instance '%s'", inst.name)
@@ -212,7 +268,7 @@ def _CheckInstances(cl, notepad, instances):
         if inst.status not in HELPLESS_STATES:
           logging.info("Restart of instance '%s' succeeded", inst.name)
 
-  return started
+  return (is_started, started)
 
 
 def _CheckDisks(cl, notepad, nodes, instances, started):
@@ -284,8 +340,7 @@ def _VerifyDisks(cl, uuid, nodes, instances):
   """Run a per-group "gnt-cluster verify-disks".
 
   """
-  job_id = cl.SubmitJob([opcodes.OpGroupVerifyDisks(
-      group_name=uuid, priority=constants.OP_PRIO_LOW)])
+  job_id = cl.SubmitJob([opcodes.OpGroupVerifyDisks(group_name=uuid)])
   ((_, offline_disk_instances, _), ) = \
     cli.PollJob(job_id, cl=cl, feedback_fn=logging.debug)
   cl.ArchiveJob(job_id)
@@ -389,7 +444,7 @@ def ParseOptions():
   options.job_age = cli.ParseTimespec(options.job_age)
 
   if args:
-    parser.error("No arguments expected")
+    parser.error("No arguments expected: %s" % args)
 
   return (options, args)
 
@@ -638,15 +693,13 @@ def _GetGroupData(cl, uuid):
                     fields=["name", "status", "disks_active", "snodes",
                             "pnode.group.uuid", "snodes.group.uuid"],
                     qfilter=[qlang.OP_EQUAL, "pnode.group.uuid", uuid],
-                    use_locking=True,
-                    priority=constants.OP_PRIO_LOW),
+                    use_locking=True),
 
     # Get all nodes in group
     opcodes.OpQuery(what=constants.QR_NODE,
                     fields=["name", "bootid", "offline"],
                     qfilter=[qlang.OP_EQUAL, "group.uuid", uuid],
-                    use_locking=True,
-                    priority=constants.OP_PRIO_LOW),
+                    use_locking=True),
     ]
 
   job_id = cl.SubmitJob(job)
@@ -751,7 +804,7 @@ def _GroupWatcher(opts):
                          pathutils.WATCHER_GROUP_INSTANCE_STATUS_FILE,
                          known_groups)
 
-    started = _CheckInstances(client, notepad, instances)
+    restart_needed,started = _CheckInstances(client, notepad, instances)
     _CheckDisks(client, notepad, nodes, instances, started)
     _VerifyDisks(client, group_uuid, nodes, instances)
   except Exception, err:
@@ -760,6 +813,20 @@ def _GroupWatcher(opts):
   else:
     # Save changes for next run
     notepad.Save(state_path)
+  
+  #restart watcher if some instances started from stages
+  if restart_needed == True:
+    # TODO: now restart instances for all node groups, must make opportunity to start children for given node group
+    logging.info("Executing after-stage watcher restart for node group %s", group_uuid)
+    #_StartGroupChildren(client, opts.wait_children)
+    try:
+      # TODO: Should utils.StartDaemon be used instead?
+      logging.info("Trying to restart after-stage %s" % ' '.join(sys.argv))
+      pid = os.spawnv(os.P_NOWAIT, sys.argv[0], sys.argv)
+    except Exception: # pylint: disable=W0703
+      logging.exception("Failed to restart after-stage %s" % ' '.join(sys.argv))
+    else:
+      logging.debug("Started with PID %s", pid)
 
   return constants.EXIT_SUCCESS
 

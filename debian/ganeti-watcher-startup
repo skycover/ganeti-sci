@@ -1,0 +1,7 @@
+#!/bin/sh
+
+. /etc/default/ganeti
+
+sleep $WATCHER_START_DELAY
+/usr/sbin/ganeti-watcher
+touch $WATCHER_ACTIVE_FLAG

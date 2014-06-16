@@ -3,3 +3,6 @@ NODED_ARGS=""
 MASTERD_ARGS=""
 RAPI_ARGS=""
 CONFD_ARGS=""
+WATCHER_START_DELAY="90"
+WATCHER_ACTIVE_FLAG="/var/run/ganeti/ganeti-watcher-active.flag"
+

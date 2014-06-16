@@ -298,7 +298,10 @@ def _GetConfigFileDiskData(block_devices, blockdev_prefix,
   disk_data = []
 
   for sd_suffix, (cfdev, dev_path, _) in zip(_letters, block_devices):
-    sd_name = blockdev_prefix + sd_suffix
+    if blockdev_prefix == '0':
+      sd_name = ord(sd_suffix) - ord('a')
+    else:
+      sd_name = blockdev_prefix + sd_suffix
 
     if cfdev.mode == constants.DISK_RDWR:
       mode = "w"
