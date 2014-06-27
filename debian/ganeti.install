@@ -4,6 +4,6 @@ usr/lib/ganeti
 usr/share/man
 usr/share/ganeti/default
 debian/15-ganeti etc/molly-guard/run.d
-debian/stages.conf.example etc/ganeti
+debian/stages.conf etc/ganeti
 debian/ganeti-watcher /etc/init.d
 debian/ganeti-watcher-startup /usr/sbin
