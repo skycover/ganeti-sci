@@ -39,6 +39,7 @@ case "$1" in
     stop)
         log_daemon_msg "Stopping $DESC" "$2"
         rm -f "$WATCHER_ACTIVE_FLAG"
+		killall -q ganeti-watcher-startup
 	log_end_msg "0"
         ;;
     status)

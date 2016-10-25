@@ -69,6 +69,7 @@ doc/examples/gnt-config-backup
 doc/examples/hooks/ipsec
 doc/html.orig
 doc/html/_images
+doc/html
 doc/html/_static/pygments.css
 doc/html/rapi.html
 doc/html/searchindex.js
