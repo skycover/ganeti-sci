@@ -1,3 +1,9 @@
+ganeti (2.10.3-1~bpo70+sci4) wheezy-backports; urgency=medium
+
+  * fixes for drbd >= 8.4: add drbdsetup new-device and new-mirror for network part assembling of drbd (needed for diskless states of drbd), relocate syncer parameters setting to local part (in 8.4 syncer require disk-config)
+
+ -- Vladimir Ipatov <vs@ipatov.net>  Mon, 22 Jan 2018 16:58:45 +0300
+
 ganeti (2.10.3-1~bpo70+sci3) wheezy-backports; urgency=medium
 
   * fix timeout for watcher startup after reboot
