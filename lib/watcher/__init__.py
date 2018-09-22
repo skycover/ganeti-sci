@@ -560,6 +560,8 @@ def GetLuxiClient(try_restart):
 
   """
   try:
+    if not utils.EnsureDaemon(constants.LUXID):
+      raise errors.GenericError("Can't start the luxi daemon")
     return cli.GetClient()
   except errors.OpPrereqError, err:
     # this is, from cli.GetClient, a not-master case
