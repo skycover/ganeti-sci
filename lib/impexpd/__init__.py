@@ -79,7 +79,7 @@ BUFSIZE = 1024 * 1024
 
 # Common options for socat
 SOCAT_TCP_OPTS = ["keepalive", "keepidle=60", "keepintvl=10", "keepcnt=5"]
-SOCAT_OPENSSL_OPTS = ["verify=1", "method=TLSv1",
+SOCAT_OPENSSL_OPTS = ["verify=1", "method=TLS1",
                       "cipher=%s" % constants.OPENSSL_CIPHERS]
 
 if constants.SOCAT_USE_COMPRESS:
@@ -188,6 +188,8 @@ class CommandBuilder(object):
         "retry=%s" % self._opts.connect_retries,
         "intervall=1",
         ] + common_addr_opts
+
+      addr2 += ["openssl-commonname=%s" % constants.X509_CERT_CN]
 
     else:
       raise errors.GenericError("Invalid mode '%s'" % self._mode)
