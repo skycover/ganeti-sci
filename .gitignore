@@ -29,7 +29,8 @@ Makefile
 autotools/replace_vars.sed
 autotools/shell-env-init
 config.status
-daemons
+daemons/daemon-util
+daemons/ganeti-cleaner
 debian/files
 debian/ganeti-2.10.postinst.debhelper
 debian/ganeti-2.10.postrm.debhelper
