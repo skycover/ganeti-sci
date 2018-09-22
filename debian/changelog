@@ -1,6 +1,8 @@
 ganeti (2.10.3-1~bpo70+sci5) stretch; urgency=medium
 
   * socat fixes for stretch
+  * RAPI security fixes: bind to lo, require auth
+  * Delete drbd secret from gnt-instance and RAPI answers
 
  -- Vladimir Ipatov <vs@ipatov.net>  Mon, 22 Jan 2018 16:58:45 +0300
 
