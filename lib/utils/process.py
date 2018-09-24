@@ -983,6 +983,53 @@ def KillProcess(pid, signal_=signal.SIGTERM, timeout=30,
     _helper(pid, signal.SIGKILL, waitpid)
 
 
+def RunInSeparateProcess2(fn, *args):
+  """Runs a function in a separate process.
+
+  Note: Only boolean return values are supported.
+
+  @type fn: callable
+  @param fn: Function to be called
+  @rtype: bool
+  @return: Function's result
+
+  """
+  pid = os.fork()
+  if pid == 0:
+    # Child process
+    try:
+      # In case the function uses temporary files
+      utils_wrapper.ResetTempfileModule()
+
+      # Call function
+      result = int(fn(*args))
+      assert result in (0, 1, 2)
+    except: # pylint: disable=W0702
+      logging.exception("Error while calling function in separate process")
+      # 0 and 1 are reserved for the return value
+      result = 33
+
+    os._exit(result) # pylint: disable=W0212
+
+  # Parent process
+
+  # Avoid zombies and check exit code
+  (_, status) = os.waitpid(pid, 0)
+
+  if os.WIFSIGNALED(status):
+    exitcode = None
+    signum = os.WTERMSIG(status)
+  else:
+    exitcode = os.WEXITSTATUS(status)
+    signum = None
+
+  if not (exitcode in (0, 1, 2) and signum is None):
+    raise errors.GenericError("Child program failed (code=%s, signal=%s)" %
+                              (exitcode, signum))
+
+  return exitcode
+
+
 def RunInSeparateProcess(fn, *args):
   """Runs a function in a separate process.
 

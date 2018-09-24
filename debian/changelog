@@ -1,6 +1,7 @@
 ganeti (2.10.3-1+sci6) stretch; urgency=medium
 
   * add local libs for ganeti-luxid to work in stretch env
+  * add exit code 8 for masterd if master is top-voted by another running master. disable rapi startup in this case
 
  -- Vladimir Ipatov <vs@ipatov.net>  Sat, 22 Sep 2018 16:58:45 +0300
 

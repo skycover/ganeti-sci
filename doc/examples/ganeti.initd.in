@@ -34,6 +34,9 @@ fi
 check_exitcode() {
     RC=$1
 
+    if [ $RC -eq 8 ]; then
+        export GLOBRC=$RC
+    fi
     if errmsg=$($DAEMON_UTIL check-exitcode $RC)
     then
         log_action_end_msg 0 "$errmsg"
@@ -45,9 +48,18 @@ check_exitcode() {
 start_action() {
     # called as start_action daemon-name
     local daemon="$1"
-    log_action_begin_msg "$daemon"
-    $DAEMON_UTIL start "$@"
-    check_exitcode $?
+    # dont start ganeti-rapi if masterd exited with RC 8
+    if [ "$daemon" = "ganeti-rapi" ]; then
+        if [ "$GLOBRC" != "8" ]; then
+            log_action_begin_msg "$daemon"
+            $DAEMON_UTIL start "$@"
+            check_exitcode $?
+        fi
+    else    
+        log_action_begin_msg "$daemon"
+        $DAEMON_UTIL start "$@"
+        check_exitcode $?
+    fi
 }
 
 stop_action() {

@@ -1093,6 +1093,9 @@ exitFailure = ConstantUtils.exitFailure
 exitNotcluster :: Int
 exitNotcluster = 5
 
+exitNotmasterTopvoted :: Int
+exitNotmasterTopvoted = 8
+
 exitNotmaster :: Int
 exitNotmaster = 11
 

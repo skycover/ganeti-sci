@@ -624,7 +624,7 @@ def CheckAgreement():
     votes = bootstrap.GatherMasterVotes(node_names)
     if not votes:
       # empty node list, this is a one node cluster
-      return True
+      return 0
     if votes[0][0] is None:
       retries -= 1
       time.sleep(10)
@@ -635,21 +635,22 @@ def CheckAgreement():
                      " after multiple retries. Aborting startup")
     logging.critical("Use the --no-voting option if you understand what"
                      " effects it has on the cluster state")
-    return False
+    return 1
   # here a real node is at the top of the list
   all_votes = sum(item[1] for item in votes)
   top_node, top_votes = votes[0]
 
-  result = False
+  result = 1
   if top_node != myself:
     logging.critical("It seems we are not the master (top-voted node"
                      " is %s with %d out of %d votes)", top_node, top_votes,
                      all_votes)
+    result = 2
   elif top_votes < all_votes - top_votes:
     logging.critical("It seems we are not the master (%d votes for,"
                      " %d votes against)", top_votes, all_votes - top_votes)
   else:
-    result = True
+    result = 0
 
   return result
 
@@ -732,8 +733,11 @@ def CheckMasterd(options, args):
     # CheckAgreement uses RPC and threads, hence it needs to be run in
     # a separate process before we call utils.Daemonize in the current
     # process.
-    if not utils.RunInSeparateProcess(CheckAgreement):
+    result = utils.RunInSeparateProcess2(CheckAgreement)
+    if result == 1:
       sys.exit(constants.EXIT_FAILURE)
+    if result == 2:
+      sys.exit(constants.EXIT_NOTMASTER_TOPVOTED)
 
   # ActivateMasterIP also uses RPC/threads, so we run it again via a
   # separate process.
