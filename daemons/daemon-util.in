@@ -247,7 +247,7 @@ start() {
   if type -p start-stop-daemon >/dev/null; then
    # add local libs for ganeti-luxid to work in stretch
    if [ $name == "ganeti-luxid" ]; then
-    export LD_PRELOAD="/usr/local/lib/libcurl-gnutls.so.4.2.0 /usr/local/lib/libgnutls.so.26.22.4 /usr/local/lib/libtasn1.so.3.1.16 /usr/local/lib/libgcrypt.so.11.7.0 /usr/local/lib/librtmp.so.0"
+    export LD_PRELOAD="/usr/share/ganeti/lib/libcurl-gnutls.so.4.2.0 /usr/share/ganeti/lib/libgnutls.so.26.22.4 /usr/share/ganeti/lib/libtasn1.so.3.1.16 /usr/share/ganeti/lib/libgcrypt.so.11.7.0 /usr/share/ganeti/lib/librtmp.so.0"
    fi
     start-stop-daemon --start --quiet --oknodo \
       --pidfile $pidfile \
